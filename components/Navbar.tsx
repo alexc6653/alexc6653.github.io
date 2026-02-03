@@ -8,6 +8,8 @@ interface NavbarProps {
   isAdmin: boolean;
   onLogout: () => void;
   userName: string;
+  activeView: 'all' | 'movies' | 'series';
+  onViewChange: (view: 'all' | 'movies' | 'series') => void;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ 
@@ -16,17 +18,18 @@ const Navbar: React.FC<NavbarProps> = ({
   searchTerm, 
   isAdmin, 
   onLogout, 
-  userName 
+  userName,
+  activeView,
+  onViewChange
 }) => {
   const [isSearchActive, setIsSearchActive] = useState(false);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-[1000] bg-[#02040a]/70 backdrop-blur-2xl h-[80px] px-10 flex items-center justify-between border-b border-white/5 transition-all duration-300">
       <div className="flex items-center gap-12 flex-1">
-        {/* Brand Identity */}
         <div 
           className="flex items-center gap-3 cursor-pointer group" 
-          onClick={() => window.location.reload()}
+          onClick={() => onViewChange('all')}
         >
           <div className="relative">
              <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
@@ -38,14 +41,30 @@ const Navbar: React.FC<NavbarProps> = ({
           </h1>
         </div>
 
-        {/* Cinematic Links */}
         <div className="hidden lg:flex items-center gap-10">
-          <button className="flex items-center gap-2.5 text-[11px] font-black tracking-[2px] text-white/60 hover:text-white uppercase transition-all relative after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-[2px] after:bg-[#0063e5] after:scale-x-0 hover:after:scale-x-100 after:transition-transform">
+          <button 
+            onClick={() => onViewChange('all')}
+            className={`flex items-center gap-2.5 text-[11px] font-black tracking-[2px] uppercase transition-all relative ${activeView === 'all' ? 'text-white after:scale-x-100' : 'text-white/60 hover:text-white'} after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-[2px] after:bg-[#0063e5] after:scale-x-0 after:transition-transform`}
+          >
             <i className="fa-solid fa-house text-sm"></i> HOME
           </button>
           
+          <button 
+            onClick={() => onViewChange('series')}
+            className={`flex items-center gap-2.5 text-[11px] font-black tracking-[2px] uppercase transition-all relative ${activeView === 'series' ? 'text-white after:scale-x-100' : 'text-white/60 hover:text-white'} after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-[2px] after:bg-[#0063e5] after:scale-x-0 after:transition-transform`}
+          >
+            <i className="fa-solid fa-tv text-sm"></i> SERIEN
+          </button>
+
+          <button 
+            onClick={() => onViewChange('movies')}
+            className={`flex items-center gap-2.5 text-[11px] font-black tracking-[2px] uppercase transition-all relative ${activeView === 'movies' ? 'text-white after:scale-x-100' : 'text-white/60 hover:text-white'} after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-[2px] after:bg-[#0063e5] after:scale-x-0 after:transition-transform`}
+          >
+            <i className="fa-solid fa-film text-sm"></i> FILME
+          </button>
+
           <div className="relative flex items-center gap-3 group">
-            <i className={`fa-solid fa-magnifying-glass text-sm transition-colors ${isSearchActive ? 'text-[#0063e5]' : 'text-white/60'}`}></i>
+            <i className={`fa-solid fa-magnifying-glass text-sm transition-colors ${isSearchActive || searchTerm ? 'text-[#0063e5]' : 'text-white/60'}`}></i>
             <input 
               type="text" 
               placeholder="SUCHEN"
@@ -55,21 +74,10 @@ const Navbar: React.FC<NavbarProps> = ({
               onBlur={() => !searchTerm && setIsSearchActive(false)}
               className={`bg-transparent border-b-2 border-transparent focus:border-[#0063e5] outline-none text-[11px] font-black tracking-[2px] uppercase transition-all duration-500 ${isSearchActive || searchTerm ? 'w-56 opacity-100' : 'w-0 opacity-0'}`}
             />
-            {!isSearchActive && !searchTerm && (
-              <span className="text-[11px] font-black tracking-[2px] uppercase cursor-pointer text-white/60" onClick={() => setIsSearchActive(true)}>SUCHE</span>
-            )}
           </div>
-
-          <button className="flex items-center gap-2.5 text-[11px] font-black tracking-[2px] text-white/60 hover:text-white uppercase transition-all">
-            <i className="fa-solid fa-plus text-sm"></i> WATCHLIST
-          </button>
-          <button className="flex items-center gap-2.5 text-[11px] font-black tracking-[2px] text-white/60 hover:text-white uppercase transition-all">
-            <i className="fa-solid fa-film text-sm"></i> FILME
-          </button>
         </div>
       </div>
 
-      {/* User Actions */}
       <div className="flex items-center gap-8">
         {isAdmin && (
           <button 
@@ -77,7 +85,7 @@ const Navbar: React.FC<NavbarProps> = ({
             className="group relative px-7 py-2.5 bg-white text-black text-[10px] font-black uppercase tracking-[2px] rounded-full transition-all hover:bg-[#0063e5] hover:text-white shadow-xl overflow-hidden"
           >
             <span className="relative z-10 flex items-center gap-2">
-              <i className="fa-solid fa-cloud-arrow-up"></i> UPLOAD
+              <i className="fa-solid fa-plus"></i> UPLOAD
             </span>
             <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
           </button>

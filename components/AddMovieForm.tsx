@@ -1,263 +1,235 @@
 
-import React, { useState, useRef } from 'react';
-import { Movie } from '../types';
-import { generateMovieMetadata } from '../services/geminiService';
+import React, { useState } from 'react';
+import { Movie, Season, Episode } from '../types';
 import { CATEGORIES } from '../constants';
 
 interface AddMovieFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (movie: Movie) => void;
+  onAdd: (movie: Movie) => Promise<void>;
 }
 
 const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd }) => {
   const [title, setTitle] = useState('');
-  const [loading, setLoading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [contentType, setContentType] = useState<'movie' | 'series'>('movie');
+  const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     description: '',
     genre: 'Action',
     rating: 8.5,
     year: new Date().getFullYear(),
-    posterUrl: '',
-    backdropUrl: '',
-    videoUrl: ''
+    posterData: null as Blob | null,
+    backdropData: null as Blob | null,
+    videoData: null as Blob | null
   });
 
-  const handleAiGeneration = async () => {
-    if (!title) return alert("Gib zuerst einen Filmtitel ein!");
+  const [seasons, setSeasons] = useState<Season[]>([
+    { number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1', videoData: undefined }] }
+  ]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: string, sIndex?: number, eIndex?: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (sIndex !== undefined && eIndex !== undefined) {
+      const updated = [...seasons];
+      updated[sIndex].episodes[eIndex].videoData = file;
+      setSeasons(updated);
+    } else {
+      setFormData(prev => ({ ...prev, [field]: file }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !formData.posterData) return alert("Bitte mindestens Titel und Poster wählen!");
+    
     setLoading(true);
+    const newMovie: Movie = {
+      id: `m-${Date.now()}`,
+      title,
+      isPremium,
+      type: contentType,
+      description: formData.description,
+      genre: formData.genre,
+      rating: formData.rating,
+      year: formData.year,
+      posterData: formData.posterData,
+      backdropData: formData.backdropData || undefined,
+      videoData: formData.videoData || undefined,
+      seasons: contentType === 'series' ? seasons : undefined
+    };
+
     try {
-      const metadata = await generateMovieMetadata(title);
-      if (metadata) {
-        // Sicherstellen, dass das Genre in unserer Liste ist (oder Fallback auf Action)
-        const matchedGenre = CATEGORIES.find(c => c.toLowerCase() === metadata.genre.toLowerCase()) || 'Action';
-        
-        setFormData(prev => ({
-          ...prev,
-          description: metadata.description,
-          genre: matchedGenre,
-          rating: metadata.rating,
-          year: metadata.year,
-          posterUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}-poster/400/600`,
-          backdropUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}-backdrop/1920/1080`
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          posterUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`,
-          backdropUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}/1920/1080`
-        }));
-      }
+      await onAdd(newMovie);
+      // Nur schließen und resetten, wenn kein Fehler auftrat
+      onClose();
+      reset();
     } catch (err) {
-      alert("KI Generation fehlgeschlagen. Du kannst die Details auch manuell eintragen.");
+      console.error("Upload failed in component", err);
+      // Wir schließen das Modal NICHT, damit der Nutzer es nochmal versuchen kann
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // WICHTIG: Blob URLs sind nur temporär. Sie werden nach einem Reload gelöscht.
-      const url = URL.createObjectURL(file);
-      setFormData(p => ({ ...p, videoUrl: url }));
-      alert("Hinweis: Lokale Videos funktionieren nur während dieser Browser-Sitzung. Für dauerhafte Filme nutze bitte YouTube-Links.");
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title || !formData.videoUrl) return alert("Titel und Video-Link werden benötigt!");
-    
-    onAdd({
-      id: `m-${Date.now()}`,
-      title,
-      isPremium,
-      ...formData
-    });
-    
-    onClose();
-    // Reset
+  const reset = () => {
     setTitle('');
     setFormData({
       description: '',
       genre: 'Action',
       rating: 8.5,
       year: new Date().getFullYear(),
-      posterUrl: '',
-      backdropUrl: '',
-      videoUrl: ''
+      posterData: null,
+      backdropData: null,
+      videoData: null
     });
+    setSeasons([{ number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1' }] }]);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-black/95 flex items-center justify-center p-4 backdrop-blur-2xl animate-in fade-in duration-300">
-      <div className="bg-[#0f121a] w-full max-w-5xl rounded-[40px] border border-white/10 shadow-[0_50px_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col md:flex-row h-full max-h-[90vh]">
+    <div className="fixed inset-0 z-[2000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-3xl animate-in fade-in duration-500">
+      <div className="bg-[#0f121a] w-full max-w-6xl rounded-[40px] border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-full max-h-[90vh]">
         
-        {/* Links: Live Vorschau */}
-        <div className="w-full md:w-1/3 bg-black/40 border-r border-white/5 relative p-10 flex flex-col items-center justify-center overflow-hidden">
-          <div className="text-[10px] font-black text-[#0063e5] uppercase tracking-[0.4em] mb-8 absolute top-10 left-10">Monitor</div>
-          
-          <div className="relative group w-full max-w-[300px] aspect-[2/3] rounded-3xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/10 transition-transform duration-500 hover:scale-105">
-            {formData.posterUrl ? (
-              <img src={formData.posterUrl} className="w-full h-full object-cover" alt="Vorschau" />
-            ) : (
-              <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center gap-4">
-                <i className="fa-solid fa-clapperboard text-5xl text-white/10"></i>
-                <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Warte auf Daten</span>
-              </div>
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent flex flex-col justify-end p-8">
-                <h4 className="text-white font-black uppercase text-xl leading-none tracking-tighter truncate">{title || 'FILMTITEL'}</h4>
-                <div className="flex items-center gap-3 mt-3">
-                  <span className="bg-[#0063e5] text-white text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest">{formData.genre}</span>
-                  <span className="text-white/40 text-[10px] font-black">{formData.year}</span>
-                </div>
-            </div>
-          </div>
-          
-          <div className="mt-12 w-full hidden md:block">
-             <div className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Backdrop Monitor</div>
-             <div className="w-full aspect-video bg-white/5 rounded-2xl border border-white/5 overflow-hidden shadow-inner">
-                {formData.backdropUrl ? <img src={formData.backdropUrl} className="w-full h-full object-cover opacity-60" /> : <div className="w-full h-full bg-white/5 animate-pulse" />}
-             </div>
-          </div>
+        {/* Preview Sidebar */}
+        <div className="hidden lg:flex w-80 bg-black/40 border-r border-white/5 p-10 flex-col gap-8 overflow-y-auto">
+           <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[4px]">Preview</h3>
+           <div className="aspect-[2/3] w-full bg-white/5 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden">
+             {formData.posterData ? (
+               <img src={URL.createObjectURL(formData.posterData)} className="w-full h-full object-cover" />
+             ) : (
+               <i className="fa-solid fa-image text-white/10 text-3xl"></i>
+             )}
+           </div>
+           <div className="aspect-video w-full bg-white/5 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden">
+             {formData.backdropData ? (
+               <img src={URL.createObjectURL(formData.backdropData)} className="w-full h-full object-cover" />
+             ) : (
+               <i className="fa-solid fa-clapperboard text-white/10 text-3xl"></i>
+             )}
+           </div>
         </div>
 
-        {/* Rechts: Editor */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#0f121a]">
-          <div className="p-10 border-b border-white/5 flex justify-between items-center sticky top-0 bg-[#0f121a]/90 backdrop-blur-md z-10">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-white flex items-center gap-4">
-               <i className="fa-solid fa-film text-[#0063e5]"></i> Movie <span className="text-[#0063e5]">Architect</span>
-            </h2>
-            <button onClick={onClose} className="text-white/30 hover:text-white transition w-12 h-12 rounded-full hover:bg-white/5 flex items-center justify-center border border-white/5">
-              <i className="fa-solid fa-xmark text-xl"></i>
-            </button>
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
+          <div className="flex justify-between items-center mb-12">
+            <h2 className="text-3xl font-black uppercase text-white italic tracking-tighter">Content <span className="text-[#0063e5]">Creator</span></h2>
+            <button onClick={onClose} disabled={loading} className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all"><i className="fa-solid fa-xmark"></i></button>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-10 space-y-12 pb-24">
-            <div className="space-y-10">
-              {/* Titel & KI */}
+          <form onSubmit={handleSubmit} className="space-y-12">
+            <div className="flex gap-4 p-1 bg-black/50 rounded-2xl border border-white/5 w-fit mb-8">
+              <button type="button" onClick={() => setContentType('movie')} className={`px-10 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${contentType === 'movie' ? 'bg-[#0063e5] text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Film</button>
+              <button type="button" onClick={() => setContentType('series')} className={`px-10 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${contentType === 'series' ? 'bg-[#0063e5] text-white shadow-lg' : 'text-white/40 hover:text-white'}`}>Serie</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
-                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] ml-1">Basics</label>
-                <div className="flex gap-4">
-                  <div className="relative flex-1">
-                    <input 
-                      type="text" value={title} onChange={e => setTitle(e.target.value)}
-                      className="bg-black/50 border border-white/10 rounded-2xl px-8 py-6 w-full text-lg outline-none focus:border-[#0063e5] transition-all text-white placeholder-white/20 font-bold"
-                      placeholder="Filmtitel hier eingeben..."
-                    />
-                  </div>
-                  <button 
-                    type="button" onClick={handleAiGeneration} disabled={loading || !title}
-                    className="bg-[#0063e5] text-white px-10 rounded-2xl hover:brightness-125 disabled:opacity-20 shadow-[0_15px_40px_rgba(0,99,229,0.3)] transition-all flex items-center gap-4 group"
-                  >
-                    {loading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles text-xl group-hover:rotate-12 transition-transform"></i>}
-                    <span className="font-black uppercase text-xs tracking-widest">KI GENERIEREN</span>
-                  </button>
-                </div>
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Titel</label>
+                <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-[#0063e5]" placeholder="Z.B. The Avengers" required />
               </div>
-
-              {/* Video Link */}
               <div className="space-y-4">
-                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] ml-1">Streaming Source</label>
-                <div className="space-y-4">
-                  <div className="relative">
-                    <input 
-                      type="text" value={formData.videoUrl.startsWith('blob:') ? '' : formData.videoUrl} 
-                      onChange={e => setFormData(p => ({ ...p, videoUrl: e.target.value }))}
-                      className="bg-black/50 border border-white/10 rounded-2xl px-8 py-6 w-full text-sm outline-none focus:border-[#0063e5] transition-all text-white placeholder-white/20 font-mono"
-                      placeholder="https://www.youtube.com/watch?v=..."
-                    />
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 text-white/20">
-                       <i className="fa-brands fa-youtube text-2xl"></i>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-6 px-4">
-                    <div className="h-[1px] flex-1 bg-white/5"></div>
-                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Oder Offline Datei</span>
-                    <div className="h-[1px] flex-1 bg-white/5"></div>
-                  </div>
-
-                  <button 
-                    type="button" onClick={() => videoInputRef.current?.click()}
-                    className={`w-full py-6 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all border-2 border-dashed ${formData.videoUrl.startsWith('blob:') ? 'bg-[#0063e5]/20 border-[#0063e5] text-white' : 'bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/20'}`}
-                  >
-                    <i className="fa-solid fa-cloud-arrow-up mr-3 text-lg"></i>
-                    {formData.videoUrl.startsWith('blob:') ? 'DATEI BEREIT (WIRD NICHT PERMANENT GESPEICHERT)' : 'VOM COMPUTER HOCHLADEN'}
-                  </button>
-                  <input type="file" ref={videoInputRef} onChange={handleFile} className="hidden" accept="video/*" />
-                </div>
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Genre</label>
+                <select value={formData.genre} onChange={e => setFormData(p => ({ ...p, genre: e.target.value }))} className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-[#0063e5]">
+                  {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
+            </div>
 
-              {/* Story & Details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] ml-1">Logline / Beschreibung</label>
-                  <textarea 
-                    value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
-                    className="bg-black/50 border border-white/10 rounded-3xl px-8 py-6 w-full text-sm h-[200px] outline-none focus:border-[#0063e5] resize-none transition-all text-white/80 leading-relaxed font-medium"
-                    placeholder="Worum geht es in dem Meisterwerk?"
-                  ></textarea>
-                </div>
-                
-                <div className="space-y-8">
-                   <div className="grid grid-cols-1 gap-6">
-                      <div className="space-y-4">
-                         <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] ml-1">Genre Auswahl</label>
-                         <select 
-                           value={formData.genre} 
-                           onChange={e => setFormData(p => ({...p, genre: e.target.value}))}
-                           className="bg-black/50 border border-white/10 rounded-2xl px-8 py-5 w-full text-sm font-black uppercase tracking-widest outline-none focus:border-[#0063e5] appearance-none text-white cursor-pointer"
-                         >
-                           {CATEGORIES.filter(c => c !== 'All').map(cat => (
-                             <option key={cat} value={cat} className="bg-[#0f121a]">{cat}</option>
-                           ))}
-                         </select>
-                      </div>
-                      <div className="space-y-4">
-                         <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] ml-1">Produktionsjahr</label>
-                         <input 
-                           type="number" value={formData.year} 
-                           onChange={e => setFormData(p => ({...p, year: parseInt(e.target.value)}))} 
-                           className="bg-black/50 border border-white/10 rounded-2xl px-8 py-5 w-full text-sm font-black outline-none focus:border-[#0063e5] text-white" 
-                         />
-                      </div>
-                   </div>
+            <div className="space-y-4">
+              <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Beschreibung</label>
+              <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-[#0063e5] h-32" placeholder="Kurze Story..." />
+            </div>
 
-                   {/* Premium Toggle */}
-                   <div 
-                     onClick={() => setIsPremium(!isPremium)}
-                     className={`flex items-center justify-between p-8 rounded-[32px] cursor-pointer transition-all border-2 ${isPremium ? 'bg-yellow-500/10 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.2)]' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                   >
-                     <div className="flex items-center gap-6">
-                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${isPremium ? 'bg-yellow-500 text-black' : 'bg-white/5 text-white/20'}`}>
-                           <i className="fa-solid fa-crown text-2xl"></i>
-                        </div>
-                        <div>
-                           <span className="text-xs font-black uppercase text-white tracking-widest block">Premium Only</span>
-                           <span className="text-[9px] text-white/30 uppercase tracking-[0.2em] mt-1">Nur für PRO Mitglieder sichtbar</span>
-                        </div>
-                     </div>
-                     <div className={`w-14 h-7 rounded-full relative transition-all duration-500 ${isPremium ? 'bg-yellow-500' : 'bg-white/10'}`}>
-                        <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all duration-500 ${isPremium ? 'left-[32px]' : 'left-1'}`}></div>
-                     </div>
-                   </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               <div className="space-y-4">
+                  <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Poster (2:3)</label>
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl p-10 cursor-pointer hover:border-[#0063e5] group transition-all">
+                     <i className="fa-solid fa-cloud-arrow-up text-3xl text-white/20 group-hover:text-[#0063e5] mb-4"></i>
+                     <span className="text-[10px] font-black text-white/40 uppercase">{formData.posterData ? 'Bild gewählt' : 'Datei wählen'}</span>
+                     <input type="file" accept="image/*" className="hidden" onChange={e => handleFileChange(e, 'posterData')} />
+                  </label>
+               </div>
+               <div className="space-y-4">
+                  <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Backdrop (16:9)</label>
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl p-10 cursor-pointer hover:border-[#0063e5] group transition-all">
+                     <i className="fa-solid fa-film text-3xl text-white/20 group-hover:text-[#0063e5] mb-4"></i>
+                     <span className="text-[10px] font-black text-white/40 uppercase">{formData.backdropData ? 'Bild gewählt' : 'Datei wählen'}</span>
+                     <input type="file" accept="image/*" className="hidden" onChange={e => handleFileChange(e, 'backdropData')} />
+                  </label>
+               </div>
+            </div>
+
+            {contentType === 'movie' ? (
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Filmdatei (Video)</label>
+                <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl p-14 cursor-pointer hover:border-[#0063e5] group transition-all">
+                   <i className="fa-solid fa-play-circle text-4xl text-white/20 group-hover:text-[#0063e5] mb-4"></i>
+                   <span className="text-[10px] font-black text-white/60 uppercase">{formData.videoData ? 'Video geladen ✓' : 'Video Datei hochladen'}</span>
+                   <input type="file" accept="video/*" className="hidden" onChange={e => handleFileChange(e, 'videoData')} />
+                </label>
               </div>
+            ) : (
+              <div className="space-y-8 bg-black/40 p-10 rounded-[40px] border border-white/5">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xl font-black italic">Staffeln & Folgen</h4>
+                  <button type="button" onClick={() => setSeasons(p => [...p, { number: p.length + 1, episodes: [{ id: `ep-${Date.now()}`, number: 1, title: 'Folge 1' }] }])} className="bg-white text-black px-6 py-2 rounded-xl text-[10px] font-black uppercase">Staffel hinzufügen</button>
+                </div>
+                {seasons.map((s, si) => (
+                  <div key={si} className="space-y-6 p-8 bg-white/5 rounded-3xl border border-white/5">
+                     <div className="flex justify-between items-center">
+                        <span className="text-sm font-black text-[#0063e5] uppercase italic">Staffel {s.number}</span>
+                        <button type="button" onClick={() => {
+                          const updated = [...seasons];
+                          updated[si].episodes.push({ id: `ep-${Date.now()}`, number: updated[si].episodes.length + 1, title: `Folge ${updated[si].episodes.length + 1}` });
+                          setSeasons(updated);
+                        }} className="text-[9px] text-white/40 hover:text-white uppercase font-black">+ Folge</button>
+                     </div>
+                     {s.episodes.map((ep, ei) => (
+                       <div key={ep.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-black/20 p-4 rounded-2xl">
+                          <span className="md:col-span-1 text-[10px] font-black opacity-20">#{ep.number}</span>
+                          <input type="text" value={ep.title} onChange={e => {
+                            const updated = [...seasons];
+                            updated[si].episodes[ei].title = e.target.value;
+                            setSeasons(updated);
+                          }} className="md:col-span-5 bg-transparent border-b border-white/10 px-2 py-1 text-xs text-white outline-none focus:border-[#0063e5]" placeholder="Episoden-Titel" />
+                          <label className="md:col-span-6 flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2 cursor-pointer hover:bg-white/10 transition-all">
+                             <i className="fa-solid fa-file-video text-[#0063e5]"></i>
+                             <span className="text-[10px] font-black text-white/40 uppercase truncate">{ep.videoData ? 'Video geladen' : 'Video Datei wählen'}</span>
+                             <input type="file" accept="video/*" className="hidden" onChange={e => handleFileChange(e, '', si, ei)} />
+                          </label>
+                       </div>
+                     ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between p-10 bg-white/5 rounded-[40px] border border-white/5">
+              <div>
+                <h4 className="text-lg font-black italic">PRO Exclusive</h4>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Sichtbar nur für Premium Mitglieder</p>
+              </div>
+              <button type="button" onClick={() => setIsPremium(!isPremium)} className={`w-16 h-8 rounded-full relative transition-all ${isPremium ? 'bg-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.4)]' : 'bg-white/10'}`}>
+                <div className={`absolute top-1.5 w-5 h-5 bg-white rounded-full transition-all ${isPremium ? 'left-9' : 'left-1.5'}`}></div>
+              </button>
             </div>
 
             <button 
               type="submit" 
-              className="w-full py-10 bg-white text-black font-black rounded-[40px] shadow-[0_40px_80px_rgba(255,255,255,0.1)] hover:scale-[1.02] active:scale-95 transition-all text-xs tracking-[0.6em] uppercase flex items-center justify-center gap-6"
+              disabled={loading} 
+              className={`w-full py-8 text-white rounded-[32px] font-black uppercase italic tracking-[5px] text-xs transition-all shadow-2xl ${loading ? 'bg-gray-600 cursor-wait opacity-80' : 'bg-[#0063e5] hover:scale-[1.01] active:scale-[0.99] shadow-blue-600/30'}`}
             >
-              <i className="fa-solid fa-paper-plane text-xl"></i> FILM VERÖFFENTLICHEN
+               {loading ? (
+                 <span className="flex items-center justify-center gap-3">
+                   <i className="fa-solid fa-circle-notch fa-spin"></i>
+                   Speichere Datenbank... (Bitte warten)
+                 </span>
+               ) : 'In Mediathek Veröffentlichen'}
             </button>
           </form>
         </div>

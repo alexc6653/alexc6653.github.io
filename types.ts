@@ -1,15 +1,33 @@
 
+export interface Episode {
+  id: string;
+  number: number;
+  title: string;
+  videoData?: Blob | string; // Unterstützt Blobs für lokale Dateien
+  videoUrl?: string; // Fallback für URLs
+}
+
+export interface Season {
+  number: number;
+  episodes: Episode[];
+}
+
 export interface Movie {
   id: string;
   title: string;
   description: string;
-  posterUrl: string;
-  backdropUrl: string;
+  posterData?: Blob | string;
+  backdropData?: Blob | string;
+  posterUrl?: string;
+  backdropUrl?: string;
   genre: string;
   rating: number;
   year: number;
-  videoUrl: string;
+  videoData?: Blob | string;
+  videoUrl?: string;
   isPremium?: boolean;
+  type: 'movie' | 'series';
+  seasons?: Season[];
 }
 
 export interface User {
@@ -23,13 +41,4 @@ export interface PremiumCode {
   code: string;
   isUsed: boolean;
   generatedBy: string;
-}
-
-export type Category = 'All' | 'Action' | 'Drama' | 'Sci-Fi' | 'Comedy' | 'Horror' | 'Thriller';
-
-export interface GeminiMetadata {
-  description: string;
-  genre: string;
-  rating: number;
-  year: number;
 }
