@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Movie, Episode } from '../types';
 
 interface MoviePlayerProps {
@@ -22,7 +23,7 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
   const [videoUrl, setVideoUrl] = useState<string>('');
   
   // Player State
-  const [isPlaying, setIsPlaying] = useState(true); // Autoplay default
+  const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -31,10 +32,20 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
   const [showControls, setShowControls] = useState(true);
   const [isBuffering, setIsBuffering] = useState(true);
   const [showEpisodeList, setShowEpisodeList] = useState(false);
+  
+  // Advanced Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [audioDelay, setAudioDelay] = useState(0); // in Sekunden
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Web Audio API Refs für Sync
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const delayNodeRef = useRef<DelayNode | null>(null);
 
   // Initialisiere erste Episode bei Serien
   useEffect(() => {
@@ -44,6 +55,30 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
       }
     }
   }, [movie]);
+
+  // Audio Context Setup für Sync
+  const initAudioContext = () => {
+    if (!videoRef.current || audioCtxRef.current) return;
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      const delay = ctx.createDelay(5.0); // Max 5 Sekunden Delay
+      const source = ctx.createMediaElementSource(videoRef.current);
+
+      source.connect(delay);
+      delay.connect(ctx.destination);
+
+      audioCtxRef.current = ctx;
+      delayNodeRef.current = delay;
+      sourceNodeRef.current = source;
+      
+      // Setze initialen Delay
+      delay.delayTime.value = audioDelay;
+    } catch (e) {
+      console.error("Audio Context konnte nicht initialisiert werden (evtl. CORS Problem bei blob):", e);
+    }
+  };
 
   // Video Source Management
   useEffect(() => {
@@ -71,12 +106,26 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
     }
   }, [movie, currentEpisode]);
 
+  // Audio Sync Update
+  useEffect(() => {
+    if (delayNodeRef.current) {
+      delayNodeRef.current.delayTime.value = audioDelay;
+    }
+  }, [audioDelay]);
+
+  // Playback Rate Update
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
+
   // Controls Visibility Handler
   const handleMouseMove = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying) setShowControls(false);
+      if (isPlaying && !showSettings && !showEpisodeList) setShowControls(false);
     }, 3000);
   };
 
@@ -88,7 +137,7 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
       handleMouseMove();
     }
     return () => { if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); };
-  }, [isPlaying]);
+  }, [isPlaying, showSettings, showEpisodeList]);
 
   // Tastatur Shortcuts
   useEffect(() => {
@@ -125,6 +174,14 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
   // Player Actions
   const togglePlay = () => {
     if (!videoRef.current) return;
+    
+    // Resume Audio Context falls nötig (Browser Policy)
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    } else if (!audioCtxRef.current) {
+      initAudioContext();
+    }
+
     if (videoRef.current.paused) {
       videoRef.current.play();
       setIsPlaying(true);
@@ -194,8 +251,6 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
     const currentIndex = currentSeason.episodes.findIndex(e => e.id === currentEpisode.id);
     if (currentIndex < currentSeason.episodes.length - 1) {
       setCurrentEpisode(currentSeason.episodes[currentIndex + 1]);
-    } else {
-       // Check next season logic if needed
     }
   };
 
@@ -205,13 +260,14 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
   return (
     <div 
       ref={containerRef}
-      className="fixed inset-0 z-[3000] bg-black flex overflow-hidden group select-none"
+      className="fixed inset-0 z-[3000] bg-black flex overflow-hidden group select-none font-sans"
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => isPlaying && setShowControls(false)}
+      onMouseLeave={() => isPlaying && !showSettings && setShowControls(false)}
       onClick={(e) => {
-         // Klick auf Video toggelt Play, aber nicht wenn auf Controls geklickt wird
          if ((e.target as HTMLElement).tagName === 'VIDEO' || (e.target as HTMLElement).id === 'video-click-area') {
            togglePlay();
+           setShowSettings(false);
+           setShowEpisodeList(false);
          }
       }}
     >
@@ -222,11 +278,13 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
             ref={videoRef}
             src={videoUrl}
             autoPlay
+            crossOrigin="anonymous"
             className="w-full h-full object-contain"
             onTimeUpdate={handleTimeUpdate}
             onWaiting={() => setIsBuffering(true)}
             onPlaying={() => setIsBuffering(false)}
             onEnded={() => setShowControls(true)}
+            onLoadedMetadata={initAudioContext}
           />
         ) : (
           <div className="text-center opacity-40">
@@ -238,24 +296,25 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
         {/* Buffering Indicator */}
         {isBuffering && videoUrl && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none z-10">
-            <div className="w-16 h-16 border-4 border-[#0063e5] border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-16 h-16 border-4 border-[#0063e5] border-t-transparent rounded-full animate-spin shadow-[0_0_30px_#0063e5]"></div>
           </div>
         )}
 
-        {/* Click Area for Play/Pause (invisible) */}
+        {/* Click Area */}
         <div id="video-click-area" className="absolute inset-0 z-0 cursor-pointer"></div>
 
-        {/* Top Gradient & Title */}
-        <div className={`absolute top-0 left-0 right-0 p-8 bg-gradient-to-b from-black/90 to-transparent transition-opacity duration-500 z-20 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+        {/* Top Header */}
+        <div className={`absolute top-0 left-0 right-0 p-8 bg-gradient-to-b from-black/90 via-black/40 to-transparent transition-opacity duration-500 z-20 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
           <div className="flex justify-between items-start">
             <button 
               onClick={onClose} 
-              className="group flex items-center gap-3 text-white/70 hover:text-white transition-all bg-black/20 hover:bg-[#0063e5] px-4 py-2 rounded-full backdrop-blur-md"
+              className="group flex items-center gap-3 text-white/70 hover:text-white transition-all bg-white/10 hover:bg-[#0063e5] px-5 py-2.5 rounded-xl backdrop-blur-md border border-white/5"
             >
               <i className="fa-solid fa-arrow-left"></i>
+              <span className="text-xs font-black uppercase tracking-widest hidden md:inline">Zurück</span>
             </button>
             <div className="text-right">
-              <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter drop-shadow-xl">{movie.title}</h2>
+              <h2 className="text-2xl md:text-3xl font-black text-white italic uppercase tracking-tighter drop-shadow-xl">{movie.title}</h2>
               {isSeries && currentEpisode && (
                 <p className="text-[#0063e5] text-xs font-black uppercase tracking-[3px] mt-1 drop-shadow-md">
                   S{movie.seasons?.find(s => s.episodes.includes(currentEpisode))?.number || 1} | E{currentEpisode.number} - {currentEpisode.title}
@@ -265,14 +324,60 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
           </div>
         </div>
 
+        {/* Settings Popup */}
+        {showSettings && (
+          <div className="absolute bottom-28 right-8 w-80 bg-[#1a1d29]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <h4 className="text-xs font-black text-white/40 uppercase tracking-widest mb-6 border-b border-white/5 pb-2">Player Einstellungen</h4>
+            
+            {/* Playback Speed */}
+            <div className="mb-6">
+              <div className="flex justify-between text-xs text-white font-bold mb-3">
+                <span>Geschwindigkeit</span>
+                <span className="text-[#0063e5]">{playbackRate}x</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                {[0.5, 1, 1.25, 1.5, 2].map(rate => (
+                  <button
+                    key={rate}
+                    onClick={() => setPlaybackRate(rate)}
+                    className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${playbackRate === rate ? 'bg-[#0063e5] text-white shadow-lg' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Audio Sync */}
+            <div>
+              <div className="flex justify-between text-xs text-white font-bold mb-3">
+                <span>Audio Sync (Verzögerung)</span>
+                <span className="text-yellow-500">{audioDelay.toFixed(2)}s</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="2" 
+                step="0.05"
+                value={audioDelay}
+                onChange={(e) => setAudioDelay(parseFloat(e.target.value))}
+                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400"
+              />
+              <p className="text-[9px] text-white/30 mt-2 leading-tight">
+                Zieht den Ton nach hinten, falls das Bild schneller ist als der Ton.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Bottom Controls */}
-        <div className={`absolute bottom-0 left-0 right-0 px-8 pb-8 pt-24 bg-gradient-to-t from-black via-black/80 to-transparent transition-all duration-500 z-30 flex flex-col gap-4 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'}`}>
+        <div className={`absolute bottom-0 left-0 right-0 px-8 pb-8 pt-32 bg-gradient-to-t from-black via-black/90 to-transparent transition-all duration-500 z-30 flex flex-col gap-5 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'}`}>
           
           {/* Progress Bar */}
           <div className="relative group/progress h-2 w-full cursor-pointer flex items-center">
              <div className="absolute w-full h-1 bg-white/20 rounded-full group-hover/progress:h-1.5 transition-all"></div>
              <div 
-               className="absolute h-1 bg-[#0063e5] rounded-full group-hover/progress:h-1.5 transition-all shadow-[0_0_15px_#0063e5]" 
+               className="absolute h-1 bg-gradient-to-r from-[#0063e5] to-blue-400 rounded-full group-hover/progress:h-1.5 transition-all shadow-[0_0_20px_#0063e5]" 
                style={{ width: `${(progress / duration) * 100}%` }}
              ></div>
              <input 
@@ -291,14 +396,25 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <button onClick={togglePlay} className="text-white hover:text-[#0063e5] transition-colors">
-                <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} text-3xl drop-shadow-lg`}></i>
+            <div className="flex items-center gap-6 md:gap-8">
+              <button onClick={togglePlay} className="text-white hover:text-[#0063e5] transition-all hover:scale-110 active:scale-95">
+                <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} text-3xl md:text-4xl drop-shadow-lg`}></i>
               </button>
 
-              <div className="flex items-center gap-4 text-white/50 group/volume">
-                <button onClick={toggleMute} className="hover:text-white transition-colors w-6">
-                  <i className={`fa-solid ${isMuted || volume === 0 ? 'fa-volume-xmark' : volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high'} text-lg`}></i>
+              <div className="hidden md:flex items-center gap-4">
+                <button onClick={() => skip(-10)} className="text-white/60 hover:text-white transition-colors flex flex-col items-center gap-1 group">
+                   <i className="fa-solid fa-rotate-left text-lg group-hover:-rotate-45 transition-transform"></i>
+                   <span className="text-[9px] font-black">-10s</span>
+                </button>
+                <button onClick={() => skip(10)} className="text-white/60 hover:text-white transition-colors flex flex-col items-center gap-1 group">
+                   <i className="fa-solid fa-rotate-right text-lg group-hover:rotate-45 transition-transform"></i>
+                   <span className="text-[9px] font-black">+10s</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 text-white/50 group/volume">
+                <button onClick={toggleMute} className="hover:text-white transition-colors w-8">
+                  <i className={`fa-solid ${isMuted || volume === 0 ? 'fa-volume-xmark' : volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high'} text-xl`}></i>
                 </button>
                 <input 
                   type="range" 
@@ -311,12 +427,12 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
                 />
               </div>
 
-              <div className="text-xs font-black text-white/60 tracking-widest font-mono">
+              <div className="text-xs font-black text-white/60 tracking-widest font-mono bg-white/5 px-3 py-1 rounded-lg">
                 {formatTime(progress)} / {formatTime(duration)}
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 md:gap-6">
                {isSeries && (
                  <>
                    <button 
@@ -328,13 +444,23 @@ const MoviePlayer: React.FC<MoviePlayerProps> = ({ movie, onClose }) => {
                    </button>
                    <button 
                      onClick={() => setShowEpisodeList(!showEpisodeList)}
-                     className={`px-4 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest transition-all ${showEpisodeList ? 'bg-[#0063e5] border-[#0063e5] text-white' : 'border-white/20 text-white/60 hover:text-white hover:border-white'}`}
+                     className={`px-4 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest transition-all ${showEpisodeList ? 'bg-[#0063e5] border-[#0063e5] text-white shadow-[0_0_15px_#0063e5]' : 'border-white/20 text-white/60 hover:text-white hover:border-white'}`}
                    >
                      Episoden
                    </button>
                  </>
                )}
                
+               <div className="w-px h-8 bg-white/10 mx-2"></div>
+
+               <button 
+                  onClick={() => setShowSettings(!showSettings)} 
+                  className={`text-xl transition-all ${showSettings ? 'text-[#0063e5] rotate-90' : 'text-white/70 hover:text-white'}`}
+                  title="Einstellungen"
+               >
+                  <i className="fa-solid fa-gear"></i>
+               </button>
+
                <button onClick={toggleFullscreen} className="text-white/70 hover:text-white transition-colors">
                   <i className={`fa-solid ${isFullscreen ? 'fa-compress' : 'fa-expand'} text-xl`}></i>
                </button>

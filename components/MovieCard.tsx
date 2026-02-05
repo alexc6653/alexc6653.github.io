@@ -8,9 +8,10 @@ interface MovieCardProps {
   isAdmin?: boolean;
   isUserPremium?: boolean;
   onDelete?: () => void;
+  onEdit?: () => void; // Neuer Prop
 }
 
-const MovieCard: React.FC<MovieCardProps> = ({ movie, onClick, isAdmin, isUserPremium, onDelete }) => {
+const MovieCard: React.FC<MovieCardProps> = ({ movie, onClick, isAdmin, isUserPremium, onDelete, onEdit }) => {
   const isLocked = movie.isPremium && !isUserPremium && !isAdmin;
   const posterUrl = movie.posterData instanceof Blob ? URL.createObjectURL(movie.posterData) : movie.posterUrl;
 
@@ -28,13 +29,26 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, onClick, isAdmin, isUserPr
           className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${isLocked ? 'grayscale opacity-60' : ''}`}
         />
         
-        {isAdmin && onDelete && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); if(confirm('Löschen?')) onDelete(); }}
-            className="absolute top-4 right-4 z-50 bg-black/60 backdrop-blur-xl text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-red-600 transition-all border border-white/10"
-          >
-            <i className="fa-solid fa-trash-can text-sm"></i>
-          </button>
+        {isAdmin && (
+          <div className="absolute top-4 right-4 z-50 flex gap-2">
+            {onEdit && (
+               <button 
+                 onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                 className="bg-black/60 backdrop-blur-xl text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-600 transition-all border border-white/10 shadow-lg"
+                 title="Bearbeiten / Folgen hinzufügen"
+               >
+                 <i className="fa-solid fa-pen text-xs"></i>
+               </button>
+            )}
+            {onDelete && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); if(confirm('Löschen?')) onDelete(); }}
+                className="bg-black/60 backdrop-blur-xl text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-600 transition-all border border-white/10 shadow-lg"
+              >
+                <i className="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            )}
+          </div>
         )}
 
         <div className="absolute top-4 left-4 z-50 flex flex-col gap-2">

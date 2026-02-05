@@ -40,10 +40,10 @@ const Hero: React.FC<HeroProps> = ({ movies, onPlay }) => {
           <div className="max-w-2xl space-y-8 animate-in slide-in-from-left-8 duration-1000">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <span className="bg-[#0063e5] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-[2px]">MUST WATCH</span>
+                <span className="bg-[#0063e5] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-[2px] shadow-lg shadow-blue-500/20">🔥 MUST WATCH</span>
                 <span className="text-white/60 text-xs font-bold tracking-widest uppercase">{current.genre} • {current.year}</span>
               </div>
-              <h2 className="text-5xl md:text-7xl font-black text-white leading-[0.9] tracking-[-2px] premium-text-shadow uppercase italic">
+              <h2 className="text-5xl md:text-7xl font-black font-heading text-white leading-[0.9] tracking-[-2px] premium-text-shadow uppercase italic">
                 {current.title}
               </h2>
             </div>
@@ -53,11 +53,11 @@ const Hero: React.FC<HeroProps> = ({ movies, onPlay }) => {
             </p>
 
             <div className="flex gap-5 pt-4">
-               <button className="bg-white text-black px-10 py-4 rounded-2xl font-black text-xs uppercase flex items-center gap-3 hover:scale-110 active:scale-95 transition-all shadow-2xl">
-                 <i className="fa-solid fa-play text-lg"></i> JETZT ANSEHEN
+               <button className="bg-white text-black px-10 py-4 rounded-2xl font-black font-heading text-xs uppercase flex items-center gap-3 hover:scale-110 active:scale-95 transition-all shadow-2xl">
+                 <i className="fa-solid fa-play text-lg"></i> JETZT ANSEHEN ▶️
                </button>
-               <button className="bg-white/10 backdrop-blur-md text-white px-10 py-4 rounded-2xl font-black text-xs uppercase border border-white/10 hover:bg-white/20 transition-all">
-                 <i className="fa-solid fa-circle-info text-lg"></i> DETAILS
+               <button className="bg-white/10 backdrop-blur-md text-white px-10 py-4 rounded-2xl font-black font-heading text-xs uppercase border border-white/10 hover:bg-white/20 transition-all">
+                 <i className="fa-solid fa-circle-info text-lg"></i> DETAILS 📄
                </button>
             </div>
           </div>

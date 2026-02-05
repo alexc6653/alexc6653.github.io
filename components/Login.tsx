@@ -32,11 +32,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     <div className="min-h-screen bg-[#0b1016] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-black text-[#00adef] tracking-tighter flex items-center justify-center gap-3">
+          <h1 className="text-5xl font-black font-heading text-[#00adef] tracking-tighter flex items-center justify-center gap-3">
             <i className="fa-solid fa-play-circle text-5xl"></i>
-            MEGA<span className="text-white">KINO</span>
+            MEGA<span className="text-white">KINO</span> 🍿
           </h1>
-          <p className="text-gray-500 font-bold mt-2 uppercase tracking-[0.2em] text-[10px]">{isRegister ? 'Neuen Account erstellen' : 'Premium Online Cinema'}</p>
+          <p className="text-gray-500 font-bold mt-2 uppercase tracking-[0.2em] text-[10px]">
+            {isRegister ? '✨ Neuen Account erstellen ✨' : '🎬 Premium Online Cinema 🎬'}
+          </p>
         </div>
 
         <div className="bg-[#151d27] p-8 rounded-lg shadow-2xl border border-white/5 relative overflow-hidden">
@@ -44,7 +46,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">Benutzername</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">👤 Benutzername</label>
               <input
                 type="text"
                 value={username}
@@ -55,7 +57,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">Passwort</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">🔑 Passwort</label>
               <input
                 type="password"
                 value={password}
@@ -67,9 +69,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
             <button
               type="submit"
-              className={`w-full text-white py-4 rounded-md font-black uppercase tracking-widest transition-all active:scale-[0.98] ${isRegister ? 'bg-green-600 hover:bg-green-500' : 'bg-[#00adef] hover:bg-[#0092ca]'}`}
+              className={`w-full text-white py-4 rounded-md font-black font-heading uppercase tracking-widest transition-all active:scale-[0.98] ${isRegister ? 'bg-green-600 hover:bg-green-500' : 'bg-[#00adef] hover:bg-[#0092ca]'}`}
             >
-              {isRegister ? 'JETZT REGISTRIEREN' : 'ANMELDEN'}
+              {isRegister ? '🚀 JETZT REGISTRIEREN' : '🔓 ANMELDEN'}
             </button>
           </form>
 
@@ -77,7 +79,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
             onClick={() => setIsRegister(!isRegister)}
             className="w-full mt-6 text-center text-[11px] text-gray-500 font-bold uppercase tracking-tighter hover:text-white transition"
           >
-            {isRegister ? 'Du hast schon einen Account? Login' : 'Noch keinen Account? Hier registrieren'}
+            {isRegister ? 'Bereits dabei? Zum Login 🔙' : 'Neu hier? Kostenlos registrieren ✨'}
           </button>
         </div>
       </div>

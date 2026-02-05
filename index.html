@@ -8,7 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap');
+        /* Import Outfit (Headings) and Plus Jakarta Sans (Body) */
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
         
         :root {
             --cinematic-bg: #02040a;
@@ -27,6 +28,11 @@
                 radial-gradient(circle at 50% -20%, #1a2a4a 0%, #02040a 60%),
                 radial-gradient(circle at 0% 100%, #0a1128 0%, transparent 40%);
             background-attachment: fixed;
+        }
+
+        /* Neue Klasse für Titel/Überschriften */
+        .font-heading {
+            font-family: 'Outfit', sans-serif;
         }
 
         .glass-panel {
