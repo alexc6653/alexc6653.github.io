@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Movie, User, PremiumCode, Season, Episode } from './types';
+import { Movie, User, PremiumCode } from './types';
 import { CATEGORIES } from './constants';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -11,31 +11,26 @@ import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import PremiumModal from './components/PremiumModal';
 
-// --- IndexedDB Configuration ---
-const DB_NAME = 'MegaKinoDB';
-const DB_VERSION = 3; // Version erhöht für Strukturänderung
-const STORE_MOVIES = 'movies'; // Nur Metadaten
-const STORE_MEDIA = 'media';   // Nur große Video-Blobs
+const API_BASE = (import.meta.env.VITE_MOVIES_API_BASE_URL as string | undefined)?.replace(/\/$/, '');
 
-const initDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
-    request.onupgradeneeded = (event) => {
-      const db = request.result;
-      // Store für Filmdaten (Titel, Poster, etc.)
-      if (!db.objectStoreNames.contains(STORE_MOVIES)) {
-        db.createObjectStore(STORE_MOVIES, { keyPath: 'id' });
-      }
-      // Neuer Store NUR für die großen Videodateien
-      if (!db.objectStoreNames.contains(STORE_MEDIA)) {
-        db.createObjectStore(STORE_MEDIA); // Key-Value Store (ID -> Blob)
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+const fetchJson = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+  if (!API_BASE) {
+    throw new Error('VITE_MOVIES_API_BASE_URL ist nicht gesetzt.');
+  }
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
   });
+  if (!response.ok) {
+    throw new Error(`API Fehler (${response.status})`);
+  }
+  if (response.status === 204) {
+    return {} as T;
+  }
+  return response.json() as Promise<T>;
 };
 
 // Helper für Emojis
@@ -76,7 +71,6 @@ const App: React.FC = () => {
   const [isAdminDashOpen, setIsAdminDashOpen] = useState(false);
   const [isPremiumModalOpen, setIsPremiumModalOpen] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
-  const [loadingVideo, setLoadingVideo] = useState(false); // Neuer Loading State für Player
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeView, setActiveView] = useState<'all' | 'movies' | 'series'>('all');
@@ -98,187 +92,68 @@ const App: React.FC = () => {
     else localStorage.removeItem('mk_session_user');
   }, [users, premiumCodes, currentUser]);
 
-  // Load Movies (METADATA ONLY) on startup
+  // Load Movies from API on startup
   useEffect(() => {
-    const loadMetadata = async () => {
+    const loadMovies = async () => {
       try {
-        const db = await initDB();
-        const tx = db.transaction(STORE_MOVIES, 'readonly');
-        const store = tx.objectStore(STORE_MOVIES);
-        const request = store.getAll();
-        
-        request.onsuccess = () => {
-          // Wir laden hier nur die Metadaten, NICHT die riesigen Videodateien!
-          setMovies(request.result.reverse());
-        };
+        const data = await fetchJson<Movie[]>('/movies');
+        setMovies(data.reverse());
       } catch (e) {
-        console.error("DB Error", e);
+        console.error("API Error", e);
+        setToast({ message: "API nicht erreichbar. Prüfe VITE_MOVIES_API_BASE_URL.", type: 'error' });
       }
     };
-    loadMetadata();
+    loadMovies();
   }, []);
 
-  // --- SAVE LOGIC (SPLIT DATA) ---
-  const saveMovieToDB = async (movieInput: Movie) => {
+  const saveMovieToApi = async (movieInput: Movie) => {
     try {
-      const db = await initDB();
-      const tx = db.transaction([STORE_MOVIES, STORE_MEDIA], 'readwrite');
-      const movieStore = tx.objectStore(STORE_MOVIES);
-      const mediaStore = tx.objectStore(STORE_MEDIA);
-
-      // 1. Video Blob extrahieren (falls vorhanden)
-      const videoBlob = movieInput.videoData;
-      
-      // 2. Metadaten-Objekt vorbereiten (OHNE das schwere Video)
-      // Wir setzen videoData auf null im Metadaten-Objekt, damit der RAM beim Laden sauber bleibt
-      const movieMetadata = { ...movieInput };
-      delete movieMetadata.videoData; 
-      
-      // Bei Serien müssen wir auch die Episoden-Videos extrahieren
-      if (movieInput.type === 'series' && movieInput.seasons) {
-        movieMetadata.seasons = movieInput.seasons.map(season => ({
-          ...season,
-          episodes: season.episodes.map(ep => {
-            // Speichere Episoden-Video separat
-            if (ep.videoData) {
-              mediaStore.put(ep.videoData, ep.id);
-            }
-            // Entferne Blob aus Metadaten
-            const cleanEp = { ...ep };
-            delete cleanEp.videoData;
-            return cleanEp;
-          })
-        }));
-      }
-
-      // 3. Hauptfilm-Video speichern (ID als Key)
-      if (videoBlob) {
-        mediaStore.put(videoBlob, movieInput.id);
-      }
-
-      // 4. Metadaten speichern
-      movieStore.put(movieMetadata);
-
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject("Transaction aborted");
+      const exists = movies.some(m => m.id === movieInput.id);
+      const saved = await fetchJson<Movie>(exists ? `/movies/${movieInput.id}` : '/movies', {
+        method: exists ? 'PUT' : 'POST',
+        body: JSON.stringify(movieInput)
       });
 
-      // Update UI List (Nur Metadaten)
       setMovies(prev => {
         const idx = prev.findIndex(m => m.id === movieInput.id);
         if (idx >= 0) {
           const newArr = [...prev];
-          newArr[idx] = movieMetadata;
+          newArr[idx] = saved;
           return newArr;
         }
-        return [movieMetadata, ...prev];
+        return [saved, ...prev];
       });
 
       setToast({ message: "Inhalt erfolgreich gespeichert! 💾", type: 'success' });
-
-    } catch (error: any) {
+    } catch (error) {
       console.error("Save failed:", error);
-      if (error && error.name === 'QuotaExceededError') {
-        alert("SPEICHER VOLL! 🛑 Der Browser hat nicht genug Platz für dieses Video.");
-      } else {
-        alert("Fehler beim Speichern. Datei möglicherweise zu groß für diesen Browser.");
-      }
+      setToast({ message: "Fehler beim Speichern in der Datenbank.", type: 'error' });
     }
   };
 
-  // --- PLAY LOGIC (FETCH VIDEO ON DEMAND) ---
   const handleMovieSelect = async (movieMeta: Movie) => {
     if (movieMeta.isPremium && !currentUser?.isPremium && !currentUser?.isAdmin) {
       setIsPremiumModalOpen(true);
       return;
     }
-
-    setLoadingVideo(true);
-    setToast({ message: "Lade Video aus Speicher...", type: 'success' });
-
-    try {
-      const db = await initDB();
-      const tx = db.transaction(STORE_MEDIA, 'readonly');
-      const mediaStore = tx.objectStore(STORE_MEDIA);
-
-      // Rekonstruiere das volle Movie-Objekt
-      const fullMovie = { ...movieMeta };
-
-      if (movieMeta.type === 'movie') {
-        // Hole Hauptfilm
-        const videoBlob = await new Promise<Blob | undefined>((resolve) => {
-          const req = mediaStore.get(movieMeta.id);
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(undefined);
-        });
-        if (videoBlob) fullMovie.videoData = videoBlob;
-      } 
-      else if (movieMeta.type === 'series' && movieMeta.seasons) {
-        // Bei Serien laden wir Videos erst, wenn die Episode angeklickt wird? 
-        // Für Einfachheit laden wir hier die Struktur, der Player kümmert sich um Episoden-Blobs.
-        // Besser: Wir injizieren eine Methode in den Player, um Blobs nachzuladen.
-        // HACK: Wir laden hier erstmal alles nötige für die erste Episode, 
-        // aber idealerweise müsste der Player async fetching unterstützen.
-        
-        // Da der Player aktuell synchron arbeitet, laden wir ALLE Episoden Blobs (Vorsicht bei RAM!)
-        // Optimierung für später: Player umschreiben. Für jetzt:
-        
-        const updatedSeasons: Season[] = [];
-        for (const season of movieMeta.seasons) {
-            const updatedEpisodes: Episode[] = [];
-            for (const ep of season.episodes) {
-                const epBlob = await new Promise<Blob | undefined>((resolve) => {
-                    const req = mediaStore.get(ep.id);
-                    req.onsuccess = () => resolve(req.result);
-                    req.onerror = () => resolve(undefined);
-                });
-                updatedEpisodes.push({ ...ep, videoData: epBlob });
-            }
-            updatedSeasons.push({ ...season, episodes: updatedEpisodes });
-        }
-        fullMovie.seasons = updatedSeasons;
-      }
-
-      setSelectedMovie(fullMovie);
-    } catch (e) {
-      console.error("Load video failed", e);
-      alert("Fehler beim Laden des Videos.");
-    } finally {
-      setLoadingVideo(false);
-    }
+    setSelectedMovie(movieMeta);
   };
 
   const deleteMovieFromDB = async (id: string) => {
     if (!window.confirm("Wirklich löschen?")) return;
     try {
-      const db = await initDB();
-      const tx = db.transaction([STORE_MOVIES, STORE_MEDIA], 'readwrite');
-      tx.objectStore(STORE_MOVIES).delete(id);
-      tx.objectStore(STORE_MEDIA).delete(id);
-      
-      // Auch Episoden löschen, falls Serie (einfache Bereinigung)
-      // Das ist komplexer ohne Index, wir löschen hier nur den Main Key.
-      // Ein 'Garbage Collector' Button im Admin Panel wäre gut für verwaiste Episoden.
-
-      await new Promise<void>(resolve => { tx.oncomplete = () => resolve(); });
-      
+      await fetchJson(`/movies/${id}`, { method: 'DELETE' });
       setMovies(prev => prev.filter(m => m.id !== id));
       setToast({ message: "Gelöscht.", type: 'success' });
     } catch (e) {
-      alert("Fehler beim Löschen.");
+      alert("Fehler beim Löschen aus der Datenbank.");
     }
   };
 
   const wipeDB = async () => {
     if (!window.confirm("ALLES LÖSCHEN? Das kann nicht rückgängig gemacht werden.")) return;
     try {
-      const db = await initDB();
-      const tx = db.transaction([STORE_MOVIES, STORE_MEDIA], 'readwrite');
-      tx.objectStore(STORE_MOVIES).clear();
-      tx.objectStore(STORE_MEDIA).clear();
-      await new Promise<void>(resolve => { tx.oncomplete = () => resolve(); });
+      await fetchJson('/movies', { method: 'DELETE' });
       setMovies([]);
       setToast({ message: "Datenbank komplett geleert.", type: 'success' });
     } catch (e) { console.error(e); }
@@ -336,13 +211,6 @@ const App: React.FC = () => {
         onViewChange={setActiveView}
         onOpenPremiumModal={() => setIsPremiumModalOpen(true)}
       />
-
-      {loadingVideo && (
-        <div className="fixed inset-0 z-[5000] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white">
-           <i className="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-[#0063e5]"></i>
-           <p className="text-sm font-bold tracking-widest uppercase">Lade große Datei...</p>
-        </div>
-      )}
 
       {searchTerm === '' && activeCategory === 'All' && activeView === 'all' && movies.length > 0 && (
         <Hero movies={movies} onPlay={handleMovieSelect} />
@@ -406,7 +274,7 @@ const App: React.FC = () => {
       <AddMovieForm 
         isOpen={isFormOpen} 
         onClose={() => setIsFormOpen(false)} 
-        onAdd={saveMovieToDB} 
+        onAdd={saveMovieToApi} 
         initialMovie={movieToEdit}
       />
       

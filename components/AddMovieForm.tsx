@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Movie, Season, Episode } from '../types';
+import { Movie, Season } from '../types';
 import { CATEGORIES } from '../constants';
 
 interface AddMovieFormProps {
@@ -21,13 +21,13 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
     genre: 'Action',
     rating: 8.5,
     year: new Date().getFullYear(),
-    posterData: null as Blob | null | string,
-    backdropData: null as Blob | null | string,
-    videoData: null as Blob | null | string
+    posterUrl: '',
+    backdropUrl: '',
+    videoUrl: ''
   });
 
   const [seasons, setSeasons] = useState<Season[]>([
-    { number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1', videoData: undefined }] }
+    { number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1', videoUrl: '' }] }
   ]);
 
   useEffect(() => {
@@ -40,37 +40,34 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
         genre: initialMovie.genre,
         rating: initialMovie.rating,
         year: initialMovie.year,
-        posterData: initialMovie.posterData || initialMovie.posterUrl || null,
-        backdropData: initialMovie.backdropData || initialMovie.backdropUrl || null,
-        videoData: initialMovie.videoData || initialMovie.videoUrl || null
+        posterUrl: typeof initialMovie.posterUrl === 'string' ? initialMovie.posterUrl : '',
+        backdropUrl: typeof initialMovie.backdropUrl === 'string' ? initialMovie.backdropUrl : '',
+        videoUrl: typeof initialMovie.videoUrl === 'string' ? initialMovie.videoUrl : ''
       });
       if (initialMovie.type === 'series' && initialMovie.seasons) {
-        setSeasons(initialMovie.seasons);
+        setSeasons(initialMovie.seasons.map(season => ({
+          ...season,
+          episodes: season.episodes.map(ep => ({
+            ...ep,
+            videoUrl: typeof ep.videoUrl === 'string' ? ep.videoUrl : ''
+          }))
+        })));
       } else {
-        setSeasons([{ number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1' }] }]);
+        setSeasons([{ number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1', videoUrl: '' }] }]);
       }
     } else if (isOpen && !initialMovie) {
       reset();
     }
   }, [isOpen, initialMovie]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: string, sIndex?: number, eIndex?: number) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (sIndex !== undefined && eIndex !== undefined) {
-      const updated = [...seasons];
-      updated[sIndex].episodes[eIndex].videoData = file;
-      setSeasons(updated);
-    } else {
-      setFormData(prev => ({ ...prev, [field]: file }));
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title) return alert("Titel fehlt!");
-    if (!formData.posterData && !initialMovie) return alert("Poster fehlt!");
+    if (!formData.posterUrl && !initialMovie) return alert("Poster fehlt!");
+    if (contentType === 'movie' && !formData.videoUrl) return alert("Video-URL fehlt!");
+    if (contentType === 'series' && seasons.some(season => season.episodes.some(ep => !ep.videoUrl))) {
+      return alert("Bitte Video-URLs für alle Episoden angeben.");
+    }
     
     setLoading(true);
     
@@ -83,9 +80,9 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
       genre: formData.genre,
       rating: formData.rating,
       year: formData.year,
-      posterData: formData.posterData || undefined,
-      backdropData: formData.backdropData || undefined,
-      videoData: formData.videoData || undefined,
+      posterUrl: formData.posterUrl || undefined,
+      backdropUrl: formData.backdropUrl || undefined,
+      videoUrl: contentType === 'movie' ? (formData.videoUrl || undefined) : undefined,
       seasons: contentType === 'series' ? seasons : undefined
     };
 
@@ -109,16 +106,15 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
       genre: 'Action',
       rating: 8.5,
       year: new Date().getFullYear(),
-      posterData: null,
-      backdropData: null,
-      videoData: null
+      posterUrl: '',
+      backdropUrl: '',
+      videoUrl: ''
     });
-    setSeasons([{ number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1' }] }]);
+    setSeasons([{ number: 1, episodes: [{ id: 'ep-1', number: 1, title: 'Folge 1', videoUrl: '' }] }]);
   };
 
-  const getPreviewUrl = (data: Blob | string | null | undefined) => {
+  const getPreviewUrl = (data: string | null | undefined) => {
     if (!data) return null;
-    if (data instanceof Blob) return URL.createObjectURL(data);
     return data as string;
   };
 
@@ -132,26 +128,16 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
     </div>
   );
 
-  const FileUploadBox = ({ label, file, onChange, icon = "fa-cloud-arrow-up", accept = "image/*" }: any) => (
+  const UrlInput = ({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (value: string) => void }) => (
     <div className="space-y-2">
       <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">{label}</label>
-      <label className={`relative flex flex-col items-center justify-center h-40 rounded-2xl border-2 border-dashed cursor-pointer transition-all overflow-hidden group ${file ? 'border-green-500/50 bg-green-500/5' : 'border-white/10 hover:border-[#0063e5] hover:bg-[#0063e5]/5'}`}>
-         
-         {/* Background Preview if Image */}
-         {file && accept.startsWith('image') && (
-            <img src={getPreviewUrl(file) || ''} className="absolute inset-0 w-full h-full object-cover opacity-30 blur-sm" />
-         )}
-
-         <div className="relative z-10 flex flex-col items-center gap-2">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${file ? 'bg-green-500 text-black' : 'bg-white/5 text-white/30 group-hover:text-[#0063e5] group-hover:scale-110'}`}>
-              <i className={`fa-solid ${file ? 'fa-check' : icon} text-xl`}></i>
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-center px-4 truncate max-w-[200px]">
-              {file ? (file instanceof File ? file.name : 'Datei Vorhanden') : 'Click to Upload'}
-            </span>
-         </div>
-         <input type="file" accept={accept} className="hidden" onChange={onChange} />
-      </label>
+      <input
+        type="url"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full bg-[#151a23] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#0063e5] focus:bg-black transition-all"
+        placeholder={placeholder}
+      />
     </div>
   );
 
@@ -173,8 +159,8 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
               {/* Card Preview */}
               <div className="w-[280px] relative group pointer-events-none select-none">
                  <div className="aspect-[2/3] w-full rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#1a1d29] relative">
-                    {formData.posterData ? (
-                       <img src={getPreviewUrl(formData.posterData) || ''} className="w-full h-full object-cover" />
+                    {formData.posterUrl ? (
+                       <img src={getPreviewUrl(formData.posterUrl) || ''} className="w-full h-full object-cover" />
                     ) : (
                        <div className="w-full h-full flex items-center justify-center bg-white/5 text-white/10">
                           <i className="fa-solid fa-image text-4xl"></i>
@@ -206,8 +192,8 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
               <div className="w-full space-y-2">
                  <p className="text-[9px] text-white/30 uppercase font-black tracking-widest text-center">Backdrop Preview</p>
                  <div className="aspect-video w-full rounded-xl overflow-hidden border border-white/10 bg-[#1a1d29] relative">
-                    {formData.backdropData ? (
-                       <img src={getPreviewUrl(formData.backdropData) || ''} className="w-full h-full object-cover opacity-60" />
+                    {formData.backdropUrl ? (
+                       <img src={getPreviewUrl(formData.backdropUrl) || ''} className="w-full h-full object-cover opacity-60" />
                     ) : (
                        <div className="w-full h-full flex items-center justify-center bg-white/5 text-white/10">
                           <i className="fa-solid fa-film text-2xl"></i>
@@ -287,8 +273,8 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
                    </div>
 
                    <div className="lg:col-span-4 space-y-4">
-                      <FileUploadBox label="Poster (2:3)" file={formData.posterData} onChange={(e: any) => handleFileChange(e, 'posterData')} icon="fa-image" />
-                      <FileUploadBox label="Backdrop (16:9)" file={formData.backdropData} onChange={(e: any) => handleFileChange(e, 'backdropData')} icon="fa-panorama" />
+                      <UrlInput label="Poster URL (2:3)" value={formData.posterUrl} placeholder="https://..." onChange={value => setFormData(p => ({ ...p, posterUrl: value }))} />
+                      <UrlInput label="Backdrop URL (16:9)" value={formData.backdropUrl} placeholder="https://..." onChange={value => setFormData(p => ({ ...p, backdropUrl: value }))} />
                    </div>
                 </div>
 
@@ -302,13 +288,13 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
 
                    {contentType === 'movie' ? (
                       <div className="bg-[#151a23] p-8 rounded-3xl border border-white/5 hover:border-white/10 transition-colors">
-                         <FileUploadBox label="Hauptfilm Datei" file={formData.videoData} onChange={(e: any) => handleFileChange(e, 'videoData')} icon="fa-file-video" accept="video/*" />
+                         <UrlInput label="Hauptfilm URL" value={formData.videoUrl} placeholder="https://cdn.example.com/movie.mp4" onChange={value => setFormData(p => ({ ...p, videoUrl: value }))} />
                       </div>
                    ) : (
                       <div className="space-y-6">
                          <div className="flex items-center justify-between">
                             <p className="text-[10px] text-white/40 uppercase tracking-widest font-black">Staffel Management</p>
-                            <button type="button" onClick={() => setSeasons(p => [...p, { number: p.length + 1, episodes: [{ id: `ep-${Date.now()}`, number: 1, title: 'Folge 1' }] }])} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-2">
+                            <button type="button" onClick={() => setSeasons(p => [...p, { number: p.length + 1, episodes: [{ id: `ep-${Date.now()}`, number: 1, title: 'Folge 1', videoUrl: '' }] }])} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-2">
                                <i className="fa-solid fa-plus"></i> Staffel hinzufügen
                             </button>
                          </div>
@@ -322,7 +308,7 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
                                   </div>
                                   <button type="button" onClick={() => {
                                      const updated = [...seasons];
-                                     updated[si].episodes.push({ id: `ep-${Date.now()}`, number: updated[si].episodes.length + 1, title: `Folge ${updated[si].episodes.length + 1}` });
+                                     updated[si].episodes.push({ id: `ep-${Date.now()}`, number: updated[si].episodes.length + 1, title: `Folge ${updated[si].episodes.length + 1}`, videoUrl: '' });
                                      setSeasons(updated);
                                   }} className="text-[10px] bg-[#0063e5] text-white px-3 py-1.5 rounded-lg font-black uppercase hover:scale-105 transition-transform">
                                      + Folge
@@ -343,13 +329,17 @@ const AddMovieForm: React.FC<AddMovieFormProps> = ({ isOpen, onClose, onAdd, ini
                                            }} className="w-full bg-transparent border-b border-transparent focus:border-[#0063e5] text-xs font-bold text-white outline-none py-1 placeholder:text-white/20" placeholder="Titel der Folge" />
                                         </div>
                                         <div className="col-span-6">
-                                           <label className={`flex items-center justify-between px-4 py-2 rounded-lg cursor-pointer transition-all border ${ep.videoData || ep.videoUrl ? 'bg-green-500/10 border-green-500/30 text-green-500' : 'bg-white/5 border-white/5 text-white/30 hover:bg-white/10 hover:text-white'}`}>
-                                              <span className="text-[9px] font-black uppercase truncate max-w-[150px]">
-                                                 {ep.videoData ? (ep.videoData instanceof File ? ep.videoData.name : 'Datei OK') : (ep.videoUrl ? 'URL OK' : 'Video Upload')}
-                                              </span>
-                                              <i className={`fa-solid ${ep.videoData || ep.videoUrl ? 'fa-check' : 'fa-upload'} text-xs`}></i>
-                                              <input type="file" accept="video/*" className="hidden" onChange={e => handleFileChange(e, '', si, ei)} />
-                                           </label>
+                                           <input
+                                             type="url"
+                                             value={ep.videoUrl || ''}
+                                             onChange={e => {
+                                               const updated = [...seasons];
+                                               updated[si].episodes[ei].videoUrl = e.target.value;
+                                               setSeasons(updated);
+                                             }}
+                                             className="w-full bg-[#151a23] border border-white/5 rounded-lg px-3 py-2 text-white text-[10px] outline-none focus:border-[#0063e5]"
+                                             placeholder="https://cdn.example.com/episode.mp4"
+                                           />
                                         </div>
                                      </div>
                                   ))}
